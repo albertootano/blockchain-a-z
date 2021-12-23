@@ -1,12 +1,16 @@
 import datetime
 import hashlib
 import json
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
+import requests
+from uuid import uuid4
+from urllib.parse import urlparse
 
 class Blockchain:
 
     def __init__(self):
         self.chain = []
+        self.transactions = []
         self.create_block(proof = 1 , previous_hash = '0')
 
     def create_block(self, proof , previous_hash):
@@ -14,8 +18,10 @@ class Blockchain:
             'index': len(self.chain)+1,
             'timestamp': str(datetime.datetime.now()),
             'proof':proof,
-            'previous_hash':previous_hash
+            'previous_hash':previous_hash,
+            'transactions': self.transactions
         }
+        self.transactions = []
         self.chain.append(block)
         return block
     
@@ -54,6 +60,14 @@ class Blockchain:
             block += 1
         return True
 
+    def add_transaction(self, sender, receiver, amount):
+        self.transactions.append({
+            'sender':sender,
+            'receiver':receiver,
+            'amount':amount
+        })
+
+
 app = Flask(__name__)
 
 blockchain = Blockchain()
@@ -91,6 +105,7 @@ def is_valid():
     else:
         response = {'message' : 'Houston, tenemos un problema. La cadena de bloques no es válida.'}
     return jsonify(response), 200  
+
 
 app.run(host = '0.0.0.0', port = 5000 , debug=True)
 
