@@ -2,9 +2,12 @@ import datetime
 import hashlib
 import json
 from flask import Flask, jsonify, request
+from flask.wrappers import Response
 import requests
 from uuid import uuid4
 from urllib.parse import urlparse
+
+from werkzeug.wrappers import response
 
 class Blockchain:
 
@@ -61,7 +64,7 @@ class Blockchain:
             block += 1
         return True
 
-    def  add_transaction(self, sender, receiver, amount):
+    def add_transaction(self, sender, receiver, amount):
         self.transactions.append({
             'sender':sender,
             'receiver':receiver,
@@ -81,12 +84,22 @@ class Blockchain:
         for node in network:
             response = requests.get(f'http://{node}/get_chain')
             if response.status_code == 200:
-                
+                length = response.json()['length']
+                chain = response.json()['chain']
+                if length > max_length and self.is_chain_valid(chain):
+                    max_length = length
+                    longest_chain = chain
+        if longest_chain: 
+            self.chain = longest_chain
+            return True
+        return False                
 
 
 
 
 app = Flask(__name__)
+
+node_address = str(uuid4()).replace('-' , '')
 
 blockchain = Blockchain()
 
@@ -96,13 +109,15 @@ def mine_block():
     previous_proof = previous_block['proof']
     proof = blockchain.proof_of_work(previous_proof)
     previous_hash = blockchain.hash(previous_block)
+    blockchain.add_transaction(sender = node_address , receiver = 'Alberto' , amount=10)
     block = blockchain.create_block(proof , previous_hash)
     response = {
         'mensaje':'Exito, se ha creado un nuevo bloque!',
         'index':block['index'],
         'timestamp': block['timestamp'],
         'proof':block['proof'],
-        'previous_hash':block['previous_hash']
+        'previous_hash':block['previous_hash'],
+        'transactions':block['transaction']
     }
 
     return jsonify(response),200
@@ -123,6 +138,31 @@ def is_valid():
     else:
         response = {'message' : 'Houston, tenemos un problema. La cadena de bloques no es válida.'}
     return jsonify(response), 200  
+
+@app.route('/add_transaction', methods = ['POST'])
+def add_transaction():
+    json = request.get_json()
+    transaction_keys = ['sender' , 'receiver' , 'amount']
+    if not all(key in json for key in transaction_keys):
+        return 'Faltan algunos elementos de la transaccion',400
+
+    index = blockchain.add_transaction(json['sender'] , json['receiver'] , json['amount'])
+    response = {'message':f'La transaccion sera añadida al bloque {index}'}
+    return jsonify(response), 201
+
+@app.route('/connect_node', methods = ['POST'])
+def connect_node():
+    json = request.get_json()
+    nodes = json.get('nodes')
+    if nodes is None:
+        return 'No hay nodos para añadir',400
+    for node in nodes:
+        blockchain.add_node(node)
+    
+    
+    response = {'message':f'Todos los nodos han sido conectados. La cadena de alb_coins contiene ahora: {len(list(blockchain.nodes))} bloques',
+                'total_nodes':list(blockchain.nodes) }
+    return jsonify(response) , 201 
 
 
 app.run(host = '0.0.0.0', port = 5000 , debug=True)
